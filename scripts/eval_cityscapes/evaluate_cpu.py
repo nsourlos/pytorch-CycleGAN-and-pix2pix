@@ -6,6 +6,7 @@ import scipy.misc
 from PIL import Image
 from util import segrun, fast_hist, get_scores
 from cityscapes import cityscapes
+import imageio
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--cityscapes_dir", type=str, required=True, help="Path to the original cityscapes dataset")
@@ -28,8 +29,8 @@ def main():
     CS = cityscapes(args.cityscapes_dir)
     n_cl = len(CS.classes)
     label_frames = CS.list_label_frames(args.split)
-    caffe.set_device(args.gpu_id)
-    caffe.set_mode_gpu()
+    print(label_frames)
+    caffe.set_mode_cpu()
     net = caffe.Net(args.caffemodel_dir + '/deploy.prototxt',
                     args.caffemodel_dir + 'fcn-8s-cityscapes.caffemodel',
                     caffe.TEST)
@@ -42,16 +43,24 @@ def main():
         # idx is city_shot_frame
         label = CS.load_label(args.split, city, idx)
         im_file = args.result_dir + '/' + idx + '_leftImg8bit.png'
+        ##print(im_file)
         im = np.array(Image.open(im_file))
-        im = scipy.misc.imresize(im, (label.shape[1], label.shape[2]))
+        #im = scipy.misc.imresize(im, (label.shape[1], label.shape[2]))
+        im = np.array(Image.fromarray(im).resize((label.shape[2], label.shape[1])))
         out = segrun(net, CS.preprocess(im))
         hist_perframe += fast_hist(label.flatten(), out.flatten(), n_cl)
         if args.save_output_images > 0:
             label_im = CS.palette(label)
             pred_im = CS.palette(out)
-            scipy.misc.imsave(output_image_dir + '/' + str(i) + '_pred.jpg', pred_im)
-            scipy.misc.imsave(output_image_dir + '/' + str(i) + '_gt.jpg', label_im)
-            scipy.misc.imsave(output_image_dir + '/' + str(i) + '_input.jpg', im)
+            #scipy.misc.imsave(output_image_dir + '/' + str(i) + '_pred.jpg', pred_im)
+            #scipy.misc.imsave(output_image_dir + '/' + str(i) + '_gt.jpg', label_im)
+            #scipy.misc.imsave(output_image_dir + '/' + str(i) + '_input.jpg', im)
+            imageio.imwrite(output_image_dir + '/' + str(i) + '_pred.jpg', pred_im)
+            imageio.imwrite(output_image_dir + '/' + str(i) + '_gt.jpg', label_im)
+            imageio.imwrite(output_image_dir + '/' + str(i) + '_input.jpg', im)
+
+        #if i > 3:
+        #    break
 
     mean_pixel_acc, mean_class_acc, mean_class_iou, per_class_acc, per_class_iou = get_scores(hist_perframe)
     with open(args.output_dir + '/evaluation_results.txt', 'w') as f:
