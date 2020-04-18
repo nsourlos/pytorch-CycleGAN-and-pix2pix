@@ -46,7 +46,7 @@ class Pix2PixModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        if self.opt.use_GAN == 1:
+        if self.isTrain and self.opt.use_GAN == 1:
             self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
         else:
             self.loss_names = ['G_GAN', 'G_L1']
