@@ -35,6 +35,7 @@ class BaseOptions():
         parser.add_argument('--n_layers_D', type=int, default=3, help='only used if netD==n_layers')
         parser.add_argument('--norm', type=str, default='instance', help='instance normalization or batch normalization [instance | batch | group | none]')
         parser.add_argument('--num_groups', type=int, default=32, help='number of groups for group normalization, only used if --norm group')
+        parser.add_argument('--activation_silu', type=int, default='0', help='set to 1 to replace ReLU activations by SiLU')
         parser.add_argument('--init_type', type=str, default='normal', help='network initialization [normal | xavier | kaiming | orthogonal]')
         parser.add_argument('--init_gain', type=float, default=0.02, help='scaling factor for normal, xavier and orthogonal.')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')

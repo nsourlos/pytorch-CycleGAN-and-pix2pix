@@ -129,7 +129,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', num_groups=32, use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', num_groups=32, activation_Silu=0, use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
     """Create a generator
 
     Parameters:
@@ -158,6 +158,10 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', num_groups=32, use_dr
     """
     net = None
     norm_layer = get_norm_layer(norm_type=norm, num_of_groups=num_groups)
+
+    global enable_Silu
+    enable_Silu = activation_Silu
+
 
     if netG == 'resnet_9blocks':
         net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
@@ -512,10 +516,7 @@ class UnetSkipConnectionBlock(nn.Module):
         global is_group_norm
         #global number_of_groups
         global enable_Silu
-        if (enable_Silu == 0):
-            downrelu = nn.LeakyReLU(0.2, True)
-        else:
-            downrelu = SiLU()
+        downrelu = nn.LeakyReLU(0.2, True)
         if (is_group_norm == 0):
             downnorm = norm_layer(inner_nc)
         else:
@@ -590,62 +591,28 @@ class NLayerDiscriminator(nn.Module):
 
         kw = 4
         padw = 1
-        if (enable_Silu == 0):
-            sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
-        else:
-            sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), SiLU()]
+        sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
         nf_mult = 1
         nf_mult_prev = 1
         for n in range(1, n_layers):  # gradually increase the number of filters
             nf_mult_prev = nf_mult
             nf_mult = min(2 ** n, 8)
-            if ((is_group_norm == 0) and (enable_Silu == 0)):
-                sequence += [
-                    nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
-                    norm_layer(ndf * nf_mult),
-                    nn.LeakyReLU(0.2, True)
-                ]
-
-            if ((is_group_norm != 0) and (enable_Silu == 0)):
-                sequence += [
-                    nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
-                    #norm_layer(number_of_groups,ndf * nf_mult),
-                    norm_layer(num_channels=ndf * nf_mult),
-                    nn.LeakyReLU(0.2, True)
-                ]
-
-            if (enable_Silu != 0):
-                sequence += [
-                    nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
-                    norm_layer(ndf * nf_mult),
-                    SiLU()
-                ]
+            sequence += [ nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias) ]
+            if (is_group_norm == 0):
+                sequence += [ norm_layer(ndf * nf_mult) ]
+            else:
+                sequence += [ norm_layer(num_channels = ndf * nf_mult) ]
+            sequence += [ nn.LeakyReLU(0.2, True) ]
 
         nf_mult_prev = nf_mult
         nf_mult = min(2 ** n_layers, 8)
 
-        if ((is_group_norm == 0) and (enable_Silu == 0)):
-            sequence += [
-                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
-                norm_layer(ndf * nf_mult),
-                nn.LeakyReLU(0.2, True)
-            ]
-
-        if ((is_group_norm != 0) and (enable_Silu == 0)):
-            sequence += [
-                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
-                #norm_layer(number_of_groups,ndf * nf_mult),
-                norm_layer(num_channels=ndf * nf_mult),
-                nn.LeakyReLU(0.2, True)
-            ]
-
-        if (enable_Silu != 0):
-            sequence += [
-                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
-                norm_layer(ndf * nf_mult),
-                SiLU()
-            ]
-        
+        sequence += [ nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias) ]
+        if (is_group_norm == 0):
+            sequence += [ norm_layer(ndf * nf_mult) ]
+        else:
+            sequence += [ norm_layer(num_channels = ndf * nf_mult) ]
+        sequence += [ nn.LeakyReLU(0.2, True) ]
 
         sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
         self.model = nn.Sequential(*sequence)
@@ -674,22 +641,12 @@ class PixelDiscriminator(nn.Module):
 
         global enable_Silu
 
-        if (enable_Silu == 0):
-            self.net = [
+        self.net = [
                 nn.Conv2d(input_nc, ndf, kernel_size=1, stride=1, padding=0),
                 nn.LeakyReLU(0.2, True),
                 nn.Conv2d(ndf, ndf * 2, kernel_size=1, stride=1, padding=0, bias=use_bias),
                 norm_layer(ndf * 2),
                 nn.LeakyReLU(0.2, True),
-                nn.Conv2d(ndf * 2, 1, kernel_size=1, stride=1, padding=0, bias=use_bias)]
-
-        if (enable_Silu != 0):
-            self.net = [
-                nn.Conv2d(input_nc, ndf, kernel_size=1, stride=1, padding=0),
-                SiLU(),
-                nn.Conv2d(ndf, ndf * 2, kernel_size=1, stride=1, padding=0, bias=use_bias),
-                norm_layer(ndf * 2),
-                SiLU(),
                 nn.Conv2d(ndf * 2, 1, kernel_size=1, stride=1, padding=0, bias=use_bias)]
 
         self.net = nn.Sequential(*self.net)
